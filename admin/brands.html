@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Admin — Brands</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/admin.css">
+</head>
+<body>
+<div class="admin-layout">
+  <aside class="sidebar" id="sidebar"></aside>
+  <div class="main">
+    <div class="topbar"><div class="topbar-title">Brands</div></div>
+    <div class="page-content" style="max-width:600px">
+      <!-- Add brand form (admin only) -->
+      <div id="addWrap" class="card" style="margin-bottom:20px;padding:20px">
+        <div style="font-size:15px;font-weight:700;margin-bottom:14px">Add New Brand</div>
+        <div style="display:flex;gap:10px">
+          <input id="brandName" placeholder="Brand name (e.g. Rolex)" style="flex:1;padding:10px 12px;border:1.5px solid var(--grey-200);border-radius:8px;font-size:14px;outline:none;font-family:var(--font)">
+          <button class="btn btn-black" id="addBrandBtn" onclick="addBrand()">Add Brand</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <table class="data-table">
+          <thead><tr><th>#</th><th>Brand Name</th><th id="actHead">Actions</th></tr></thead>
+          <tbody id="brandTbody"><tr><td colspan="3"><div class="spinner"></div></td></tr></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="js/admin-config.js"></script>
+<script>
+  const staff = requireStaff(); if (!staff) throw '';
+  const isAdmin = staff.role === 'admin';
+  document.getElementById('sidebar').innerHTML = buildSidebar(staff, 'brands.html');
+  if (!isAdmin) { document.getElementById('addWrap').style.display='none'; document.getElementById('actHead').textContent=''; }
+
+  async function load() {
+    const { data } = await db.from('brands').select().order('name');
+    const brands = data || [];
+    const tbody = document.getElementById('brandTbody');
+    if (!brands.length) { tbody.innerHTML='<tr class="empty-row"><td colspan="3">No brands yet</td></tr>'; return; }
+    tbody.innerHTML = brands.map(b => `
+      <tr>
+        <td style="color:var(--grey-400)">${b.id}</td>
+        <td>
+          <div style="display:flex;align-items:center;gap:10px">
+            <div style="width:36px;height:36px;border-radius:50%;background:var(--black);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:15px">${b.name[0].toUpperCase()}</div>
+            <b>${b.name}</b>
+          </div>
+        </td>
+        <td>${isAdmin ? `<button class="btn btn-danger btn-sm btn-icon" onclick="deleteBrand(${b.id},'${b.name.replace(/'/g,"\\'")}')">🗑️</button>` : ''}</td>
+      </tr>`).join('');
+  }
+
+  async function addBrand() {
+    const name = document.getElementById('brandName').value.trim();
+    if (!name) return;
+    const btn = document.getElementById('addBrandBtn');
+    btn.disabled = true; btn.textContent = 'Adding...';
+    const { error } = await db.from('brands').insert({ name });
+    btn.disabled = false; btn.textContent = 'Add Brand';
+    if (error) { toast(error.message, 'error'); return; }
+    document.getElementById('brandName').value = '';
+    toast('Brand added ✓'); load();
+  }
+
+  async function deleteBrand(id, name) {
+    if (!confirm(`Delete "${name}"? This will affect products using this brand.`)) return;
+    const { error } = await db.from('brands').delete().eq('id', id);
+    if (error) { toast('Cannot delete: ' + error.message, 'error'); return; }
+    toast('Brand deleted'); load();
+  }
+
+  document.getElementById('brandName')?.addEventListener('keydown', e => { if (e.key==='Enter') addBrand(); });
+  load();
+</script>
+</body>
+</html>

@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Time Keepers — Cart</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<header class="site-header">
+  <a class="logo" href="home.html">TIME <span>KEEPERS</span></a>
+  <nav class="nav-links" style="margin-left:auto">
+    <a class="nav-link" href="home.html">🏠 Shop</a>
+    <a class="nav-link active" href="cart.html">🛒 Cart</a>
+    <a class="nav-link" href="profile.html">👤 Profile</a>
+    <a class="nav-link" href="#" onclick="Session.clearUser();Cart.clear();location.href='index.html'" style="color:var(--red)">↩ Logout</a>
+  </nav>
+</header>
+
+<div class="page-hero">
+  <h1>Shopping Cart</h1>
+  <p id="cartSubtitle">Loading...</p>
+</div>
+
+<div class="cart-layout" id="cartLayout" style="display:none">
+  <!-- Items -->
+  <div>
+    <div id="cartItems"></div>
+  </div>
+
+  <!-- Summary -->
+  <div>
+    <div class="order-summary">
+      <h3 style="font-size:18px;font-weight:800;margin-bottom:20px">Order Summary</h3>
+      <div class="summary-row"><span>Subtotal</span><span id="subtotal">—</span></div>
+      <div class="summary-row"><span>Shipping</span><span style="color:var(--green)">Free</span></div>
+      <div class="summary-row summary-total"><span>Total</span><span id="total">—</span></div>
+
+      <!-- Address -->
+      <div style="margin-top:20px">
+        <div style="font-size:14px;font-weight:700;margin-bottom:8px">Delivery Address</div>
+        <select id="addressSelect" class="field" style="width:100%;margin-bottom:10px;padding:10px;border:1.5px solid var(--grey-200);border-radius:8px;font-size:13px">
+          <option value="">Select address...</option>
+        </select>
+        <div id="newAddrForm" style="display:none;border-top:1px solid var(--grey-100);padding-top:14px;margin-top:4px">
+          <div class="field" style="margin-bottom:10px"><input id="aStreet" placeholder="Street address" style="width:100%;padding:10px;border:1.5px solid var(--grey-200);border-radius:8px;font-size:13px;outline:none"></div>
+          <div class="field-row" style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px">
+            <input id="aCity" placeholder="City" style="padding:10px;border:1.5px solid var(--grey-200);border-radius:8px;font-size:13px;outline:none">
+            <input id="aPostal" placeholder="Postal code" style="padding:10px;border:1.5px solid var(--grey-200);border-radius:8px;font-size:13px;outline:none">
+          </div>
+          <input id="aCountry" placeholder="Country" value="Pakistan" style="width:100%;padding:10px;border:1.5px solid var(--grey-200);border-radius:8px;font-size:13px;margin-bottom:10px;outline:none">
+          <button class="btn btn-outline btn-sm" onclick="saveAddress()" style="width:100%">Save Address</button>
+        </div>
+      </div>
+
+      <div id="orderError" class="error-msg" style="display:none;margin-top:8px"></div>
+      <button class="btn btn-black" id="placeBtn" style="width:100%;justify-content:center;margin-top:16px" onclick="placeOrder()">Place Order (COD)</button>
+    </div>
+  </div>
+</div>
+
+<div id="emptyCart" style="display:none" class="empty-state">
+  <div class="icon">🛒</div>
+  <h3>Your cart is empty</h3>
+  <p style="margin-bottom:20px;color:var(--grey-400)">Add some watches to get started</p>
+  <a class="btn btn-black" href="home.html">Browse Collection</a>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="js/user-config.js"></script>
+<script>
+  let user = requireUser();
+  let addresses = [], selectedAddressId = null;
+
+  function renderCart() {
+    const items = Cart.get();
+    const subtitle = document.getElementById('cartSubtitle');
+    if (!items.length) {
+      document.getElementById('cartLayout').style.display = 'none';
+      document.getElementById('emptyCart').style.display = 'block';
+      subtitle.textContent = 'Your cart is empty';
+      return;
+    }
+    document.getElementById('cartLayout').style.display = 'grid';
+    document.getElementById('emptyCart').style.display = 'none';
+    subtitle.textContent = `${Cart.count()} item(s)`;
+    document.getElementById('subtotal').textContent = formatPrice(Cart.total());
+    document.getElementById('total').textContent = formatPrice(Cart.total());
+
+    document.getElementById('cartItems').innerHTML = items.map(item => `
+      <div class="cart-item" id="item-${item.productId}">
+        <img class="cart-thumb" src="${item.image}" alt="${item.name}" onerror="this.src='https://via.placeholder.com/80'">
+        <div style="flex:1">
+          <div style="font-size:11px;font-weight:600;color:var(--grey-400);letter-spacing:1px;text-transform:uppercase">${item.brandName}</div>
+          <div style="font-weight:700;font-size:15px;margin:2px 0">${item.name}</div>
+          <div style="font-weight:800;color:var(--black)">${formatPrice(item.price)}</div>
+        </div>
+        <div style="display:flex;flex-direction:column;align-items:flex-end;gap:8px">
+          <div class="qty-ctrl">
+            <button class="qty-btn" onclick="updateQty(${item.productId}, ${item.quantity - 1})">−</button>
+            <span class="qty-num">${item.quantity}</span>
+            <button class="qty-btn" onclick="updateQty(${item.productId}, ${item.quantity + 1})">+</button>
+          </div>
+          <div style="font-weight:800">${formatPrice(item.price * item.quantity)}</div>
+          <button onclick="Cart.remove(${item.productId});renderCart()" style="background:none;border:none;color:var(--red);cursor:pointer;font-size:12px;font-weight:600">✕ Remove</button>
+        </div>
+      </div>`).join('');
+  }
+
+  function updateQty(pid, qty) { Cart.updateQty(pid, qty); renderCart(); }
+
+  async function loadAddresses() {
+    const { data } = await db.from('addresses').select().eq('user_id', user.id);
+    addresses = data || [];
+    const sel = document.getElementById('addressSelect');
+    sel.innerHTML = '<option value="">Select address...</option>' +
+      addresses.map(a => `<option value="${a.id}">${a.street}, ${a.city}</option>`).join('') +
+      '<option value="new">+ Add new address</option>';
+    sel.onchange = () => {
+      selectedAddressId = sel.value === 'new' ? null : sel.value;
+      document.getElementById('newAddrForm').style.display = sel.value === 'new' ? 'block' : 'none';
+    };
+    if (addresses.length) { sel.value = addresses[0].id; selectedAddressId = addresses[0].id; }
+  }
+
+  async function saveAddress() {
+    const street = document.getElementById('aStreet').value.trim();
+    const city   = document.getElementById('aCity').value.trim();
+    const postal = document.getElementById('aPostal').value.trim();
+    const country= document.getElementById('aCountry').value.trim();
+    if (!street || !city) { toast('Street and city required', 'error'); return; }
+    const { data, error } = await db.from('addresses').insert({ user_id: user.id, street, city, postal_code: postal, country }).select().single();
+    if (error) { toast('Failed to save address', 'error'); return; }
+    addresses.push(data); selectedAddressId = data.id;
+    toast('Address saved ✓');
+    await loadAddresses();
+    document.getElementById('addressSelect').value = data.id;
+    document.getElementById('newAddrForm').style.display = 'none';
+  }
+
+  async function placeOrder() {
+    if (!selectedAddressId) { document.getElementById('orderError').textContent = 'Please select a delivery address.'; document.getElementById('orderError').style.display='block'; return; }
+    const items = Cart.get();
+    if (!items.length) return;
+    const total = Cart.total();
+    const btn = document.getElementById('placeBtn');
+    btn.disabled = true; btn.textContent = 'Placing order...';
+    document.getElementById('orderError').style.display = 'none';
+
+    const { data: order, error: oErr } = await db.from('orders').insert({
+      user_id: user.id, address_id: selectedAddressId,
+      total_amount: total, status: 'pending', payment_method: 'COD'
+    }).select().single();
+
+    if (oErr) { btn.disabled=false; btn.textContent='Place Order (COD)'; document.getElementById('orderError').textContent='Order failed. Try again.'; document.getElementById('orderError').style.display='block'; return; }
+
+    const orderItems = items.map(i => ({ order_id: order.id, product_id: i.productId, quantity: i.quantity, price_at_order: i.price }));
+    await db.from('order_items').insert(orderItems);
+    await db.from('order_tracking').insert({ order_id: order.id, status: 'pending', note: 'Order placed successfully' });
+
+    Cart.clear();
+    toast('Order placed successfully! 🎉');
+    setTimeout(() => location.href = `order-tracking.html?id=${order.id}`, 1500);
+  }
+
+  renderCart(); loadAddresses();
+</script>
+</body>
+</html>

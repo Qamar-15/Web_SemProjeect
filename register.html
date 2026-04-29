@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Time Keepers — Register</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div class="auth-page">
+  <div class="auth-left">
+    <div>
+      <div style="font-size:13px;letter-spacing:4px;opacity:.5;font-weight:600">TIME KEEPERS</div>
+      <div class="big">Join the<br>Collection.</div>
+    </div>
+    <p>Create your account and start exploring the world's finest luxury timepieces. Every order is tracked in real-time.</p>
+  </div>
+  <div class="auth-right">
+    <div class="auth-form-wrap">
+      <div class="auth-title">Create account</div>
+      <div class="auth-sub">Fill in your details to get started</div>
+      <div id="errorMsg" class="error-msg" style="display:none"></div>
+      <div class="field"><label>Full Name</label><input id="name" type="text" placeholder="Your full name"></div>
+      <div class="field"><label>Email Address</label><input id="email" type="email" placeholder="you@example.com"></div>
+      <div class="field"><label>Phone Number</label><input id="phone" type="tel" placeholder="+92 300 0000000"></div>
+      <div class="field"><label>Password</label><input id="password" type="password" placeholder="Create a password"></div>
+      <button class="btn btn-black" style="width:100%;justify-content:center" id="regBtn" onclick="register()">Create Account</button>
+      <div class="auth-switch">Already have an account? <a href="index.html">Sign in</a></div>
+    </div>
+  </div>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="js/user-config.js"></script>
+<script>
+  if (Session.getUser()) location.href = 'home.html';
+
+  async function register() {
+    const name = document.getElementById('name').value.trim();
+    const email = document.getElementById('email').value.trim();
+    const phone = document.getElementById('phone').value.trim();
+    const password = document.getElementById('password').value;
+    const btn = document.getElementById('regBtn');
+    const err = document.getElementById('errorMsg');
+    err.style.display = 'none';
+    if (!name || !email || !password) { err.textContent = 'Name, email and password are required.'; err.style.display = 'block'; return; }
+    btn.disabled = true; btn.textContent = 'Creating account...';
+    try {
+      const { data, error } = await db.from('users').insert({ full_name: name, email, phone, password }).select().single();
+      if (error) throw error;
+      Session.setUser(data);
+      location.href = 'home.html';
+    } catch(e) {
+      btn.disabled = false; btn.textContent = 'Create Account';
+      err.textContent = e.message?.includes('duplicate') ? 'Email already registered.' : 'Registration failed. Try again.';
+      err.style.display = 'block';
+    }
+  }
+</script>
+</body>
+</html>

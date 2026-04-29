@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Time Keepers — Order Tracking</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<header class="site-header">
+  <a class="logo" href="home.html">TIME <span>KEEPERS</span></a>
+  <nav class="nav-links" style="margin-left:auto">
+    <a class="nav-link" href="home.html">🏠 Shop</a>
+    <a class="nav-link" href="cart.html">🛒 Cart</a>
+    <a class="nav-link" href="profile.html">👤 Profile</a>
+    <a class="nav-link" href="#" onclick="Session.clearUser();Cart.clear();location.href='index.html'" style="color:var(--red)">↩ Logout</a>
+  </nav>
+</header>
+
+<div id="content" style="max-width:760px;margin:0 auto;padding:24px">
+  <a href="profile.html" style="display:inline-flex;align-items:center;gap:6px;font-size:13px;color:var(--grey-600);margin-bottom:20px">← Back to Profile</a>
+  <div class="spinner" id="loader"></div>
+  <div id="main" style="display:none">
+    <!-- Order Header -->
+    <div style="border:1.5px solid var(--grey-200);border-radius:var(--radius);padding:24px;margin-bottom:20px">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:12px">
+        <div>
+          <div style="font-size:24px;font-weight:900" id="orderId">—</div>
+          <div style="font-size:13px;color:var(--grey-400);margin-top:4px" id="orderDate">—</div>
+          <div style="font-size:13px;color:var(--grey-400)" id="orderAddress">—</div>
+        </div>
+        <div style="text-align:right">
+          <span id="orderStatus" class="status-badge" style="font-size:13px;padding:6px 14px"></span>
+          <div style="font-size:22px;font-weight:900;margin-top:8px" id="orderTotal">—</div>
+          <div style="font-size:12px;color:var(--grey-400)">COD</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Order Items -->
+    <div style="border:1.5px solid var(--grey-200);border-radius:var(--radius);padding:24px;margin-bottom:20px">
+      <div style="font-size:16px;font-weight:800;margin-bottom:16px">Items</div>
+      <div id="orderItems"></div>
+    </div>
+
+    <!-- Tracking Timeline -->
+    <div style="border:1.5px solid var(--grey-200);border-radius:var(--radius);padding:24px">
+      <div style="font-size:16px;font-weight:800;margin-bottom:16px">Tracking Timeline</div>
+      <div id="timeline" class="timeline"></div>
+    </div>
+  </div>
+
+  <div id="notFound" class="empty-state" style="display:none">
+    <div class="icon">🔍</div>
+    <h3>Order not found</h3>
+    <p>Check your order ID or go back to profile</p>
+    <a class="btn btn-black" href="profile.html" style="margin-top:16px">Go to Profile</a>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="js/user-config.js"></script>
+<script>
+  let user = requireUser();
+  const params = new URLSearchParams(location.search);
+  const orderId = params.get('id');
+
+  async function load() {
+    if (!orderId) { showNotFound(); return; }
+
+    const { data: order } = await db.from('orders')
+      .select('*, addresses(street,city,postal_code,country), order_items(*, products(name,image_url,brands(name)))')
+      .eq('id', orderId).eq('user_id', user.id).maybeSingle();
+
+    if (!order) { showNotFound(); return; }
+
+    const col = statusColor(order.status);
+    document.getElementById('orderId').textContent = `Order #${order.id}`;
+    document.getElementById('orderDate').textContent = formatDate(order.created_at);
+    document.getElementById('orderAddress').textContent =
+      order.addresses ? `${order.addresses.street}, ${order.addresses.city}` : '—';
+    document.getElementById('orderTotal').textContent = formatPrice(order.total_amount);
+    const badge = document.getElementById('orderStatus');
+    badge.textContent = statusLabel(order.status);
+    badge.style.background = col + '22'; badge.style.color = col;
+
+    // Items
+    document.getElementById('orderItems').innerHTML = (order.order_items || []).map(item => `
+      <div style="display:flex;gap:14px;align-items:center;padding:10px 0;border-bottom:1px solid var(--grey-100)">
+        <img src="${item.products?.image_url||''}" style="width:60px;height:60px;object-fit:cover;border-radius:8px;background:var(--grey-100)" onerror="this.src='https://via.placeholder.com/60'">
+        <div style="flex:1">
+          <div style="font-size:11px;color:var(--grey-400);font-weight:600;letter-spacing:1px">${item.products?.brands?.name||''}</div>
+          <div style="font-weight:700">${item.products?.name||'—'}</div>
+          <div style="font-size:13px;color:var(--grey-600)">Qty: ${item.quantity}</div>
+        </div>
+        <div style="font-weight:800">${formatPrice(item.price_at_order)}</div>
+      </div>`).join('');
+
+    // Tracking
+    const { data: events } = await db.from('order_tracking')
+      .select().eq('order_id', orderId).order('created_at', { ascending: true });
+
+    const tl = document.getElementById('timeline');
+    if (!events?.length) { tl.innerHTML = '<p style="color:var(--grey-400)">No tracking events yet</p>'; }
+    else {
+      tl.innerHTML = events.map((e, i) => {
+        const col = statusColor(e.status);
+        const isLast = i === events.length - 1;
+        return `
+          <div class="tl-item">
+            <div class="tl-dot" style="background:${col};${isLast ? 'box-shadow:0 0 0 4px '+col+'33' : ''}"></div>
+            <div class="tl-content">
+              <h4 style="color:${isLast ? col : 'inherit'}">${statusLabel(e.status)}</h4>
+              ${e.note ? `<p>${e.note}</p>` : ''}
+              <p style="margin-top:2px">${formatDate(e.created_at)}</p>
+            </div>
+          </div>`;
+      }).join('');
+    }
+
+    document.getElementById('loader').style.display = 'none';
+    document.getElementById('main').style.display = 'block';
+  }
+
+  function showNotFound() {
+    document.getElementById('loader').style.display = 'none';
+    document.getElementById('notFound').style.display = 'block';
+  }
+
+  load();
+</script>
+</body>
+</html>

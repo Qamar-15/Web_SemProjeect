@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Admin — Order Detail</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/admin.css">
+  <style>
+    .info-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px;}
+    .info-row{display:flex;flex-direction:column;gap:2px;}
+    .info-label{font-size:11px;font-weight:700;color:var(--grey-400);text-transform:uppercase;letter-spacing:.5px;}
+    .info-val{font-size:14px;font-weight:600;}
+    .tl-item{display:flex;gap:14px;position:relative;padding-bottom:20px;}
+    .tl-item:not(:last-child)::after{content:'';position:absolute;left:11px;top:26px;width:2px;height:calc(100% - 26px);background:var(--grey-200);}
+    .tl-dot{width:24px;height:24px;border-radius:50%;flex-shrink:0;margin-top:2px;}
+  </style>
+</head>
+<body>
+<div class="admin-layout">
+  <aside class="sidebar" id="sidebar"></aside>
+  <div class="main">
+    <div class="topbar">
+      <a href="orders.html" style="font-size:13px;color:var(--grey-600);display:flex;align-items:center;gap:6px">← Orders</a>
+      <div class="topbar-title" style="margin-left:16px" id="pageTitle">Order Detail</div>
+    </div>
+    <div class="page-content">
+      <div id="loader" class="spinner"></div>
+      <div id="main" style="display:none">
+
+        <!-- Order Header -->
+        <div class="card" style="margin-bottom:20px;padding:24px">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:16px">
+            <div>
+              <div style="font-size:24px;font-weight:900" id="oTitle">—</div>
+              <div style="color:var(--grey-400);font-size:13px;margin-top:4px" id="oDate">—</div>
+            </div>
+            <div style="text-align:right">
+              <div id="oStatus"></div>
+              <div style="font-size:22px;font-weight:900;margin-top:8px" id="oTotal">—</div>
+            </div>
+          </div>
+          <div class="info-grid" style="margin-top:20px">
+            <div class="info-row"><span class="info-label">Customer</span><span class="info-val" id="oCustomer">—</span></div>
+            <div class="info-row"><span class="info-label">Email</span><span class="info-val" id="oEmail">—</span></div>
+            <div class="info-row"><span class="info-label">Phone</span><span class="info-val" id="oPhone">—</span></div>
+            <div class="info-row"><span class="info-label">Address</span><span class="info-val" id="oAddr">—</span></div>
+            <div class="info-row"><span class="info-label">Payment</span><span class="info-val" id="oPayment">—</span></div>
+          </div>
+        </div>
+
+        <div style="display:grid;grid-template-columns:1fr 360px;gap:20px">
+          <div>
+            <!-- Items -->
+            <div class="card" style="margin-bottom:20px">
+              <div class="card-header"><h3>Order Items</h3></div>
+              <div id="oItems"></div>
+            </div>
+            <!-- Tracking history -->
+            <div class="card">
+              <div class="card-header"><h3>Tracking History</h3></div>
+              <div class="card-body" id="oTracking"></div>
+            </div>
+          </div>
+
+          <!-- Update status -->
+          <div>
+            <div class="card" style="position:sticky;top:80px">
+              <div class="card-header"><h3>Update Status</h3></div>
+              <div class="card-body">
+                <div class="field"><label>New Status</label>
+                  <select id="newStatus">
+                    <option value="pending">Pending</option>
+                    <option value="confirmed">Confirmed</option>
+                    <option value="processing">Processing</option>
+                    <option value="shipped">Shipped</option>
+                    <option value="delivered">Delivered</option>
+                    <option value="cancelled">Cancelled</option>
+                  </select>
+                </div>
+                <div class="field"><label>Note (optional)</label><textarea id="statusNote" rows="3" placeholder="e.g. Package dispatched from Karachi..."></textarea></div>
+                <button class="btn btn-black" id="updateBtn" style="width:100%;justify-content:center" onclick="updateStatus()">Update Status</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="js/admin-config.js"></script>
+<script>
+  const staff = requireStaff(); if (!staff) throw '';
+  document.getElementById('sidebar').innerHTML = buildSidebar(staff, 'orders.html');
+  const orderId = new URLSearchParams(location.search).get('id');
+
+  async function load() {
+    if (!orderId) { location.href = 'orders.html'; return; }
+    const { data: o } = await db.from('orders')
+      .select('*,users(full_name,email,phone),addresses(street,city,postal_code,country),order_items(*,products(name,image_url,brands(name)))')
+      .eq('id', orderId).maybeSingle();
+    if (!o) { location.href = 'orders.html'; return; }
+
+    document.getElementById('pageTitle').textContent = `Order #${o.id}`;
+    document.getElementById('oTitle').textContent = `Order #${o.id}`;
+    document.getElementById('oDate').textContent = formatDate(o.created_at);
+    document.getElementById('oTotal').textContent = formatPrice(o.total_amount);
+    document.getElementById('oStatus').innerHTML = badge(o.status);
+    document.getElementById('oCustomer').textContent = o.users?.full_name || '—';
+    document.getElementById('oEmail').textContent   = o.users?.email || '—';
+    document.getElementById('oPhone').textContent   = o.users?.phone || '—';
+    document.getElementById('oAddr').textContent    = o.addresses ? `${o.addresses.street}, ${o.addresses.city}` : '—';
+    document.getElementById('oPayment').textContent = o.payment_method || '—';
+
+    // Items
+    document.getElementById('oItems').innerHTML = (o.order_items||[]).map(item => `
+      <div style="display:flex;gap:14px;align-items:center;padding:14px 20px;border-bottom:1px solid var(--grey-50)">
+        <img src="${item.products?.image_url||''}" style="width:56px;height:56px;object-fit:cover;border-radius:8px;background:var(--grey-100)" onerror="this.src='https://via.placeholder.com/56'">
+        <div style="flex:1">
+          <div style="font-size:11px;font-weight:700;color:var(--grey-400);letter-spacing:1px">${item.products?.brands?.name||''}</div>
+          <div style="font-weight:700">${item.products?.name||'—'}</div>
+          <div style="font-size:13px;color:var(--grey-400)">Qty: ${item.quantity}</div>
+        </div>
+        <div style="font-weight:800">${formatPrice(item.price_at_order)}</div>
+      </div>`).join('');
+
+    await loadTracking();
+    document.getElementById('loader').style.display = 'none';
+    document.getElementById('main').style.display = 'block';
+  }
+
+  async function loadTracking() {
+    const { data: events } = await db.from('order_tracking').select().eq('order_id', orderId).order('created_at',{ascending:true});
+    const wrap = document.getElementById('oTracking');
+    if (!events?.length) { wrap.innerHTML='<p style="color:var(--grey-400)">No tracking events yet</p>'; return; }
+    wrap.innerHTML = events.map((e,i) => {
+      const col = statusColor(e.status);
+      const isLast = i === events.length-1;
+      return `<div class="tl-item">
+        <div class="tl-dot" style="background:${col};${isLast?'box-shadow:0 0 0 4px '+col+'33':''}"></div>
+        <div>
+          <div style="font-weight:700;color:${isLast?col:'inherit'}">${statusLabel(e.status)}</div>
+          ${e.note?`<div style="font-size:13px;color:var(--grey-600)">${e.note}</div>`:''}
+          <div style="font-size:12px;color:var(--grey-400);margin-top:2px">${formatDate(e.created_at)}</div>
+        </div>
+      </div>`;
+    }).join('');
+  }
+
+  async function updateStatus() {
+    const status = document.getElementById('newStatus').value;
+    const note   = document.getElementById('statusNote').value.trim();
+    const btn    = document.getElementById('updateBtn');
+    btn.disabled = true; btn.textContent = 'Updating...';
+    await db.from('order_tracking').insert({ order_id: Number(orderId), status, note: note||null });
+    btn.disabled = false; btn.textContent = 'Update Status';
+    document.getElementById('statusNote').value = '';
+    toast('Status updated ✓');
+    // Refresh badge + tracking
+    const { data: o } = await db.from('orders').select('status').eq('id', orderId).single();
+    document.getElementById('oStatus').innerHTML = badge(o.status);
+    await loadTracking();
+  }
+
+  load();
+</script>
+</body>
+</html>

@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Time Keepers — Staff Login</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+  <style>
+    :root{--black:#0a0a0a;--white:#fff;--grey-200:#e0e0e0;--grey-400:#9a9a9a;--grey-600:#555;--red:#ef4444;--radius:12px;--font:'Inter',sans-serif;}
+    *{box-sizing:border-box;margin:0;padding:0;}
+    body{font-family:var(--font);min-height:100vh;display:grid;grid-template-columns:1fr 1fr;}
+    .left{background:var(--black);color:#fff;display:flex;flex-direction:column;justify-content:center;padding:60px 48px;gap:24px;}
+    .logo{font-size:13px;letter-spacing:4px;font-weight:600;opacity:.5;}
+    .big{font-size:42px;font-weight:900;line-height:1.1;letter-spacing:-1px;}
+    .role-info{display:flex;flex-direction:column;gap:10px;margin-top:8px;}
+    .role-row{display:flex;align-items:flex-start;gap:12px;padding:12px;background:rgba(255,255,255,.05);border-radius:10px;}
+    .role-tag{font-size:10px;font-weight:700;letter-spacing:1px;background:#fff;color:#000;padding:3px 8px;border-radius:5px;flex-shrink:0;margin-top:2px;}
+    .role-desc{font-size:12px;color:rgba(255,255,255,.5);line-height:1.5;}
+    .right{display:flex;flex-direction:column;justify-content:center;padding:60px 48px;background:#f9f9f9;}
+    .form-wrap{max-width:380px;width:100%;}
+    .title{font-size:28px;font-weight:900;margin-bottom:6px;}
+    .sub{color:var(--grey-600);font-size:14px;margin-bottom:32px;}
+    .field{margin-bottom:16px;}
+    .field label{display:block;font-size:12px;font-weight:700;color:var(--grey-600);margin-bottom:6px;text-transform:uppercase;letter-spacing:.5px;}
+    .field input{width:100%;padding:12px 14px;border:1.5px solid var(--grey-200);border-radius:10px;font-size:14px;outline:none;font-family:var(--font);background:#fff;transition:.2s;}
+    .field input:focus{border-color:var(--black);}
+    .btn{width:100%;padding:13px;background:var(--black);color:#fff;border:none;border-radius:10px;font-size:15px;font-weight:700;cursor:pointer;transition:.2s;font-family:var(--font);}
+    .btn:hover{background:#333;}
+    .btn:disabled{opacity:.5;cursor:not-allowed;}
+    .err{color:var(--red);font-size:13px;font-weight:500;margin-bottom:12px;display:none;}
+    .back{display:block;text-align:center;margin-top:24px;font-size:12px;color:var(--grey-400);letter-spacing:1px;}
+    .back:hover{color:var(--black);}
+    @media(max-width:768px){body{grid-template-columns:1fr;}.left{display:none;}.right{padding:40px 24px;}}
+  </style>
+</head>
+<body>
+<div class="left">
+  <div>
+    <div class="logo">TIME KEEPERS</div>
+    <div class="big">Staff<br>Portal</div>
+  </div>
+  
+</div>
+<div class="right">
+  <div class="form-wrap">
+    <div class="title">Sign in</div>
+    <div class="sub">Staff credentials only</div>
+    <div id="err" class="err"></div>
+    <div class="field"><label>Email</label><input id="email" type="email" placeholder="staff@timekeepers.com"></div>
+    <div class="field"><label>Password</label><input id="password" type="password" placeholder="Enter password"></div>
+    <button class="btn" id="loginBtn" onclick="login()">Sign In</button>
+    <a class="back" href="../index.html">← Customer Login</a>
+  </div>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="js/admin-config.js"></script>
+<script>
+  if (Session.getStaff()) location.href = 'dashboard.html';
+
+  async function login() {
+    const email = document.getElementById('email').value.trim();
+    const pass  = document.getElementById('password').value;
+    const btn = document.getElementById('loginBtn');
+    const err = document.getElementById('err');
+    err.style.display = 'none';
+    if (!email || !pass) { err.textContent = 'Email and password required.'; err.style.display = 'block'; return; }
+    btn.disabled = true; btn.textContent = 'Signing in...';
+    const { data } = await db.from('staff').select().eq('email', email).eq('password', pass).maybeSingle();
+    btn.disabled = false; btn.textContent = 'Sign In';
+    if (data) { Session.setStaff(data); location.href = 'dashboard.html'; }
+    else { err.textContent = 'Incorrect email or password.'; err.style.display = 'block'; }
+  }
+  document.getElementById('password').addEventListener('keydown', e => { if (e.key === 'Enter') login(); });
+</script>
+</body>
+</html>

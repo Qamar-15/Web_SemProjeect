@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Admin — Dashboard</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/admin.css">
+</head>
+<body>
+<div class="admin-layout">
+  <aside class="sidebar" id="sidebar"></aside>
+  <div class="main">
+    <div class="topbar">
+      <div class="topbar-title">Dashboard</div>
+      <span class="topbar-role" id="topRole"></span>
+    </div>
+    <div class="page-content">
+      <div id="statsGrid" class="stats-grid"></div>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:20px">
+        <!-- Status breakdown -->
+        <div class="card">
+          <div class="card-header"><h3>Order Status Breakdown</h3><a href="orders.html" style="font-size:12px;color:var(--grey-400)">View all →</a></div>
+          <div class="card-body" id="statusBreakdown"><div class="spinner"></div></div>
+        </div>
+        <!-- Revenue by brand placeholder -->
+        <div class="card">
+          <div class="card-header"><h3>Quick Actions</h3></div>
+          <div class="card-body" style="display:flex;flex-direction:column;gap:10px" id="quickActions"></div>
+        </div>
+      </div>
+
+      <!-- Recent orders -->
+      <div class="card">
+        <div class="card-header"><h3>Recent Orders</h3><a href="orders.html" style="font-size:12px;color:var(--grey-400)">View all →</a></div>
+        <table class="data-table">
+          <thead><tr><th>#</th><th>Customer</th><th>Date</th><th>Total</th><th>Status</th><th></th></tr></thead>
+          <tbody id="recentOrders"><tr><td colspan="6"><div class="spinner"></div></td></tr></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="js/admin-config.js"></script>
+<script>
+  const staff = requireStaff(); if (!staff) throw '';
+  document.getElementById('sidebar').innerHTML = buildSidebar(staff, 'dashboard.html');
+  document.getElementById('topRole').textContent = staff.role.toUpperCase();
+
+  async function loadDashboard() {
+    const [ordRes, prodRes, userRes, brandRes] = await Promise.all([
+      db.from('orders').select('id,total_amount,status,created_at,users(full_name)').order('created_at',{ascending:false}),
+      db.from('products').select('id'),
+      db.from('users').select('id'),
+      db.from('brands').select('id'),
+    ]);
+
+    const orders  = ordRes.data  || [];
+    const revenue = orders.reduce((s,o) => s + (o.total_amount||0), 0);
+
+    // Stats cards
+    const statsData = [
+      { label:'Total Orders', value: orders.length, icon:'📦', href:'orders.html' },
+      { label:'Revenue',      value: formatPrice(revenue), icon:'💰', href:'orders.html', small:true },
+      { label:'Products',     value: (prodRes.data||[]).length, icon:'⌚', href:'products.html' },
+      { label:'Customers',    value: (userRes.data||[]).length, icon:'👥', href: staff.role==='admin'?'users.html':'products.html' },
+    ];
+    document.getElementById('statsGrid').innerHTML = statsData.map(s => `
+      <div class="stat-card" onclick="location.href='${s.href}'">
+        <div class="stat-icon">${s.icon}</div>
+        <div class="stat-value" style="${s.small?'font-size:18px':''}">${s.value}</div>
+        <div style="display:flex;align-items:center;gap:4px">
+          <span class="stat-label">${s.label}</span>
+          <span class="arrow">↗</span>
+        </div>
+      </div>`).join('');
+
+    // Status breakdown
+    const counts = {};
+    orders.forEach(o => { counts[o.status] = (counts[o.status]||0)+1; });
+    const sbEl = document.getElementById('statusBreakdown');
+    if (!Object.keys(counts).length) { sbEl.innerHTML='<p style="color:var(--grey-400)">No orders yet</p>'; }
+    else {
+      sbEl.innerHTML = Object.entries(counts).map(([s,n]) => {
+        const col = statusColor(s); const pct = Math.round((n/orders.length)*100);
+        return `<div style="margin-bottom:14px">
+          <div class="status-bar"><span style="font-size:13px;font-weight:600">${statusLabel(s)}</span>
+          <span style="font-size:13px;font-weight:800">${n}</span></div>
+          <div class="progress"><div class="progress-bar" style="width:${pct}%;background:${col}"></div></div>
+        </div>`;
+      }).join('');
+    }
+
+    // Quick actions
+    const actions = [
+      { label:'➕ Add Product', href:'products.html', show: staff.role==='admin' },
+      { label:'🏷️ Add Brand',   href:'brands.html',  show: staff.role==='admin' },
+      { label:'📦 Manage Orders',href:'orders.html',  show: true },
+      { label:'👥 View Users',   href:'users.html',   show: staff.role==='admin' },
+      { label:'🎖️ Manage Staff', href:'staff.html',   show: staff.role==='admin' },
+    ].filter(a => a.show);
+    document.getElementById('quickActions').innerHTML = actions.map(a =>
+      `<a href="${a.href}" class="btn btn-outline" style="justify-content:center">${a.label}</a>`
+    ).join('');
+
+    // Recent orders table
+    const tbody = document.getElementById('recentOrders');
+    const recent = orders.slice(0, 10);
+    if (!recent.length) { tbody.innerHTML = '<tr class="empty-row"><td colspan="6">No orders yet</td></tr>'; return; }
+    tbody.innerHTML = recent.map(o => `
+      <tr>
+        <td><b>#${o.id}</b></td>
+        <td>${o.users?.full_name || '—'}</td>
+        <td style="color:var(--grey-400);font-size:12px">${formatDate(o.created_at)}</td>
+        <td><b>${formatPrice(o.total_amount)}</b></td>
+        <td>${badge(o.status)}</td>
+        <td><a href="order-detail.html?id=${o.id}" class="btn btn-outline btn-sm">View</a></td>
+      </tr>`).join('');
+  }
+
+  loadDashboard();
+</script>
+</body>
+</html>

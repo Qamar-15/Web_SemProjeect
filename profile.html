@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Time Keepers — Profile</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<header class="site-header">
+  <a class="logo" href="home.html">TIME <span>KEEPERS</span></a>
+  <nav class="nav-links" style="margin-left:auto">
+    <a class="nav-link" href="home.html">🏠 Shop</a>
+    <a class="nav-link" href="cart.html">🛒 Cart <span class="cart-badge" id="cartCount">0</span></a>
+    <a class="nav-link active" href="profile.html">👤 Profile</a>
+    <a class="nav-link" href="#" onclick="Session.clearUser();Cart.clear();location.href='index.html'" style="color:var(--red)">↩ Logout</a>
+  </nav>
+</header>
+
+<div class="profile-layout">
+  <!-- LEFT: User card -->
+  <div>
+    <div class="profile-card">
+      <div class="avatar" id="avatarWrap"><span id="avatarInitial">?</span></div>
+      <div style="font-size:18px;font-weight:800;margin-bottom:4px" id="userName">—</div>
+      <div style="font-size:13px;color:var(--grey-400)" id="userEmail">—</div>
+      <div style="font-size:13px;color:var(--grey-400);margin-bottom:20px" id="userPhone">—</div>
+      <button class="btn btn-outline" style="width:100%;justify-content:center" onclick="toggleEdit()">✏️ Edit Profile</button>
+
+      <!-- Edit form -->
+      <div id="editForm" style="display:none;margin-top:20px;text-align:left">
+        <div class="field"><label>Full Name</label><input id="eName" type="text"></div>
+        <div class="field"><label>Phone</label><input id="ePhone" type="tel"></div>
+        <div class="field"><label>New Password</label><input id="ePassword" type="password" placeholder="Leave blank to keep"></div>
+        <div id="editMsg" style="font-size:13px;margin-bottom:10px"></div>
+        <button class="btn btn-black btn-sm" style="width:100%;justify-content:center" onclick="saveProfile()">Save Changes</button>
+      </div>
+    </div>
+
+    <!-- Stats -->
+    <div style="margin-top:16px;display:grid;grid-template-columns:1fr 1fr;gap:12px">
+      <div style="border:1.5px solid var(--grey-200);border-radius:var(--radius);padding:16px;text-align:center">
+        <div style="font-size:28px;font-weight:900" id="totalOrders">—</div>
+        <div style="font-size:12px;color:var(--grey-400)">Total Orders</div>
+      </div>
+      <div style="border:1.5px solid var(--grey-200);border-radius:var(--radius);padding:16px;text-align:center">
+        <div style="font-size:28px;font-weight:900" id="totalSpent">—</div>
+        <div style="font-size:12px;color:var(--grey-400)">Total Spent</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- RIGHT: Orders -->
+  <div>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+      <h2 style="font-size:20px;font-weight:800">Order History</h2>
+    </div>
+    <div id="ordersWrap"><div class="spinner"></div></div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="js/user-config.js"></script>
+<script>
+  let user = requireUser();
+  document.getElementById('cartCount').textContent = Cart.count();
+
+  function populateUser() {
+    document.getElementById('avatarInitial').textContent = user.full_name?.[0]?.toUpperCase() || '?';
+    if (user.profile_picture_url) {
+      document.getElementById('avatarWrap').innerHTML = `<img src="${user.profile_picture_url}" alt="avatar">`;
+    }
+    document.getElementById('userName').textContent = user.full_name || '—';
+    document.getElementById('userEmail').textContent = user.email || '—';
+    document.getElementById('userPhone').textContent = user.phone || 'No phone set';
+    document.getElementById('eName').value = user.full_name || '';
+    document.getElementById('ePhone').value = user.phone || '';
+  }
+  populateUser();
+
+  function toggleEdit() {
+    const f = document.getElementById('editForm');
+    f.style.display = f.style.display === 'none' ? 'block' : 'none';
+  }
+
+  async function saveProfile() {
+    const name = document.getElementById('eName').value.trim();
+    const phone = document.getElementById('ePhone').value.trim();
+    const password = document.getElementById('ePassword').value;
+    const msg = document.getElementById('editMsg');
+    const updates = {};
+    if (name) updates.full_name = name;
+    if (phone) updates.phone = phone;
+    if (password) updates.password = password;
+    if (!Object.keys(updates).length) return;
+    const { data, error } = await db.from('users').update(updates).eq('id', user.id).select().single();
+    if (error) { msg.textContent = 'Update failed.'; msg.style.color = 'var(--red)'; return; }
+    Session.setUser(data); user = data;
+    msg.textContent = 'Profile updated ✓'; msg.style.color = 'var(--green)';
+    populateUser();
+    setTimeout(() => { document.getElementById('editForm').style.display = 'none'; msg.textContent = ''; }, 2000);
+  }
+
+  async function loadOrders() {
+    const { data: orders } = await db.from('orders')
+      .select('*, addresses(street,city)')
+      .eq('user_id', user.id).order('created_at', { ascending: false });
+    const wrap = document.getElementById('ordersWrap');
+    if (!orders?.length) {
+      wrap.innerHTML = '<div class="empty-state"><div class="icon">📦</div><h3>No orders yet</h3><p>Your order history will appear here.</p></div>';
+      document.getElementById('totalOrders').textContent = '0';
+      document.getElementById('totalSpent').textContent = formatPrice(0);
+      return;
+    }
+    document.getElementById('totalOrders').textContent = orders.length;
+    const spent = orders.reduce((s, o) => s + (o.total_amount || 0), 0);
+    document.getElementById('totalSpent').textContent = formatPrice(spent);
+
+    wrap.innerHTML = orders.map(o => {
+      const col = statusColor(o.status);
+      return `
+        <div class="order-card">
+          <div class="order-header">
+            <div>
+              <div style="font-weight:700;font-size:15px">Order #${o.id}</div>
+              <div style="font-size:12px;color:var(--grey-400)">${formatDate(o.created_at)} · ${o.addresses?.city || '—'}</div>
+            </div>
+            <div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px">
+              <span class="status-badge" style="background:${col}22;color:${col}">${statusLabel(o.status)}</span>
+              <span style="font-weight:800;font-size:15px">${formatPrice(o.total_amount)}</span>
+            </div>
+          </div>
+          <a href="order-tracking.html?id=${o.id}" class="btn btn-outline btn-sm" style="margin-top:10px">📍 Track Order</a>
+        </div>`;
+    }).join('');
+  }
+
+  loadOrders();
+</script>
+</body>
+</html>

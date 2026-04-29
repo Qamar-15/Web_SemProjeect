@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Admin — Users</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/admin.css">
+</head>
+<body>
+<div class="admin-layout">
+  <aside class="sidebar" id="sidebar"></aside>
+  <div class="main">
+    <div class="topbar">
+      <div class="topbar-title">Users</div>
+      <div style="margin-left:auto">
+        <div class="search-box"><span class="si">🔍</span><input id="searchInput" placeholder="Search users..." oninput="filter()"></div>
+      </div>
+    </div>
+    <div class="page-content">
+      <div class="card">
+        <table class="data-table">
+          <thead><tr><th>User</th><th>Email</th><th>Phone</th><th>Joined</th><th>Actions</th></tr></thead>
+          <tbody id="userTbody"><tr><td colspan="5"><div class="spinner"></div></td></tr></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Edit Modal -->
+<div id="editModal" class="modal-overlay" style="display:none">
+  <div class="modal-box">
+    <div class="modal-head"><h3>Edit User</h3><button onclick="closeEdit()" style="background:none;border:none;font-size:20px;cursor:pointer">✕</button></div>
+    <div class="modal-body">
+      <input type="hidden" id="editUserId">
+      <div class="field"><label>Full Name</label><input id="editName" type="text"></div>
+      <div class="field"><label>Phone</label><input id="editPhone" type="tel"></div>
+      <div class="field"><label>New Password (leave blank to keep)</label><input id="editPassword" type="password" placeholder="Enter new password"></div>
+      <div id="editMsg" style="font-size:13px;margin-top:4px"></div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn btn-outline" onclick="closeEdit()">Cancel</button>
+      <button class="btn btn-black" id="saveEditBtn" onclick="saveUser()">Save Changes</button>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="js/admin-config.js"></script>
+<script>
+  const staff = requireStaff(); if (!staff) throw '';
+  if (staff.role !== 'admin') { location.href = 'dashboard.html'; }
+  document.getElementById('sidebar').innerHTML = buildSidebar(staff, 'users.html');
+
+  let allUsers = [];
+
+  async function load() {
+    const { data } = await db.from('users').select().order('created_at',{ascending:false});
+    allUsers = data || [];
+    render(allUsers);
+  }
+
+  function filter() {
+    const q = document.getElementById('searchInput').value.toLowerCase();
+    render(q ? allUsers.filter(u => u.full_name?.toLowerCase().includes(q) || u.email?.toLowerCase().includes(q)) : allUsers);
+  }
+
+  function render(list) {
+    const tbody = document.getElementById('userTbody');
+    if (!list.length) { tbody.innerHTML='<tr class="empty-row"><td colspan="5">No users found</td></tr>'; return; }
+    tbody.innerHTML = list.map(u => `
+      <tr>
+        <td>
+          <div style="display:flex;align-items:center;gap:10px">
+            <div style="width:36px;height:36px;border-radius:50%;background:${u.profile_picture_url?'transparent':'var(--black)'};color:#fff;display:flex;align-items:center;justify-content:center;font-weight:800;overflow:hidden;flex-shrink:0">
+              ${u.profile_picture_url ? `<img src="${u.profile_picture_url}" style="width:100%;height:100%;object-fit:cover">` : (u.full_name?.[0]?.toUpperCase()||'?')}
+            </div>
+            <b>${u.full_name||'—'}</b>
+          </div>
+        </td>
+        <td style="color:var(--grey-600)">${u.email}</td>
+        <td style="color:var(--grey-600)">${u.phone||'—'}</td>
+        <td style="font-size:12px;color:var(--grey-400)">${formatDate(u.created_at)}</td>
+        <td>
+          <div style="display:flex;gap:6px">
+            <button class="btn btn-outline btn-sm btn-icon" onclick="openEdit(${u.id})" title="Edit">✏️</button>
+            <button class="btn btn-danger btn-sm btn-icon" onclick="deleteUser(${u.id},'${(u.full_name||'').replace(/'/g,"\\'")}')">🗑️</button>
+          </div>
+        </td>
+      </tr>`).join('');
+  }
+
+  function openEdit(id) {
+    const u = allUsers.find(x => x.id === id);
+    document.getElementById('editUserId').value = id;
+    document.getElementById('editName').value = u.full_name || '';
+    document.getElementById('editPhone').value = u.phone || '';
+    document.getElementById('editPassword').value = '';
+    document.getElementById('editMsg').textContent = '';
+    document.getElementById('editModal').style.display = 'flex';
+  }
+  function closeEdit() { document.getElementById('editModal').style.display = 'none'; }
+
+  async function saveUser() {
+    const id = document.getElementById('editUserId').value;
+    const name = document.getElementById('editName').value.trim();
+    const phone = document.getElementById('editPhone').value.trim();
+    const password = document.getElementById('editPassword').value;
+    const msg = document.getElementById('editMsg');
+    const updates = {};
+    if (name) updates.full_name = name;
+    if (phone) updates.phone = phone;
+    if (password) updates.password = password;
+    if (!Object.keys(updates).length) { closeEdit(); return; }
+    const btn = document.getElementById('saveEditBtn');
+    btn.disabled = true; btn.textContent = 'Saving...';
+    const { data, error } = await db.from('users').update(updates).eq('id', id).select().single();
+    btn.disabled = false; btn.textContent = 'Save Changes';
+    if (error) { msg.textContent = 'Update failed: ' + error.message; msg.style.color = '#ef4444'; return; }
+    msg.textContent = '✓ Saved'; msg.style.color = '#16a34a';
+    // Update local list
+    const idx = allUsers.findIndex(u => u.id === Number(id));
+    if (idx >= 0) allUsers[idx] = data;
+    render(allUsers);
+    setTimeout(closeEdit, 1200);
+  }
+
+  async function deleteUser(id, name) {
+    if (!confirm(`Delete user "${name}"? This will also remove their orders. Cannot be undone.`)) return;
+    const { error } = await db.from('users').delete().eq('id', id);
+    if (error) { toast('Cannot delete: ' + error.message, 'error'); return; }
+    allUsers = allUsers.filter(u => u.id !== id);
+    render(allUsers);
+    toast(`"${name}" deleted`);
+  }
+
+  load();
+</script>
+</body>
+</html>

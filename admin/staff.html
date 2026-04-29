@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Admin — Staff</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/admin.css">
+</head>
+<body>
+<div class="admin-layout">
+  <aside class="sidebar" id="sidebar"></aside>
+  <div class="main">
+    <div class="topbar"><div class="topbar-title">Staff Management</div></div>
+    <div class="page-content" style="display:grid;grid-template-columns:400px 1fr;gap:20px;align-items:start">
+
+      <!-- Add Staff Form -->
+      <div class="card" style="padding:24px">
+        <div style="font-size:16px;font-weight:800;margin-bottom:18px">Add Staff Member</div>
+        <div class="field"><label>Full Name</label><input id="sName" placeholder="Enter full name"></div>
+        <div class="field"><label>Email</label><input id="sEmail" type="email" placeholder="staff@timekeepers.com"></div>
+        <div class="field"><label>Password</label><input id="sPassword" type="password" placeholder="Set a password"></div>
+        <div class="field">
+          <label>Role</label>
+          <div style="display:flex;gap:8px;margin-top:4px">
+            <div class="fchip active" id="roleManager" onclick="setRole('manager')">Manager</div>
+            <div class="fchip" id="roleAdmin" onclick="setRole('admin')">Admin</div>
+          </div>
+        </div>
+        <input type="hidden" id="sRole" value="manager">
+        <div id="addMsg" style="font-size:13px;margin-bottom:10px"></div>
+        <button class="btn btn-black" id="addStaffBtn" style="width:100%;justify-content:center" onclick="addStaff()">Add Staff Member</button>
+      </div>
+
+      <!-- Staff List -->
+      <div class="card">
+        <div class="card-header"><h3>Current Staff</h3><span id="staffCount" style="font-size:12px;color:var(--grey-400)"></span></div>
+        <table class="data-table">
+          <thead><tr><th>Staff Member</th><th>Email</th><th>Role</th><th>Actions</th></tr></thead>
+          <tbody id="staffTbody"><tr><td colspan="4"><div class="spinner"></div></td></tr></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="js/admin-config.js"></script>
+<script>
+  const staff = requireStaff(); if (!staff) throw '';
+  if (staff.role !== 'admin') { location.href = 'dashboard.html'; }
+  document.getElementById('sidebar').innerHTML = buildSidebar(staff, 'staff.html');
+
+  let staffList = [];
+
+  function setRole(role) {
+    document.getElementById('sRole').value = role;
+    document.getElementById('roleManager').classList.toggle('active', role==='manager');
+    document.getElementById('roleAdmin').classList.toggle('active',   role==='admin');
+  }
+
+  async function load() {
+    const { data } = await db.from('staff').select().order('role');
+    staffList = data || [];
+    document.getElementById('staffCount').textContent = `${staffList.length} member(s)`;
+    const tbody = document.getElementById('staffTbody');
+    if (!staffList.length) { tbody.innerHTML='<tr class="empty-row"><td colspan="4">No staff members</td></tr>'; return; }
+    tbody.innerHTML = staffList.map(s => {
+      const isSelf = s.id === staff.id;
+      return `<tr>
+        <td>
+          <div style="display:flex;align-items:center;gap:10px">
+            <div style="width:36px;height:36px;border-radius:50%;background:${s.role==='admin'?'var(--black)':'#555'};color:#fff;display:flex;align-items:center;justify-content:center;font-weight:800">${s.full_name[0].toUpperCase()}</div>
+            <div>
+              <b>${s.full_name}</b>
+              ${isSelf?'<span style="font-size:10px;font-weight:600;color:var(--grey-400);background:var(--grey-100);padding:2px 6px;border-radius:4px;margin-left:6px">YOU</span>':''}
+            </div>
+          </div>
+        </td>
+        <td style="color:var(--grey-600)">${s.email}</td>
+        <td>${roleBadge(s.role)}</td>
+        <td>${!isSelf?`<button class="btn btn-danger btn-sm btn-icon" onclick="removeStaff(${s.id},'${s.full_name.replace(/'/g,"\\'")}')">🗑️</button>`:'<span style="color:var(--grey-400);font-size:12px">—</span>'}</td>
+      </tr>`;
+    }).join('');
+  }
+
+  async function addStaff() {
+    const name     = document.getElementById('sName').value.trim();
+    const email    = document.getElementById('sEmail').value.trim();
+    const password = document.getElementById('sPassword').value;
+    const role     = document.getElementById('sRole').value;
+    const msg      = document.getElementById('addMsg');
+    if (!name || !email || !password) { msg.textContent='All fields are required.'; msg.style.color='#ef4444'; return; }
+    const btn = document.getElementById('addStaffBtn');
+    btn.disabled = true; btn.textContent = 'Adding...';
+    const { error } = await db.from('staff').insert({ full_name: name, email, password, role });
+    btn.disabled = false; btn.textContent = 'Add Staff Member';
+    if (error) { msg.textContent = error.message.includes('duplicate') ? 'Email already exists.' : error.message; msg.style.color='#ef4444'; return; }
+    document.getElementById('sName').value = '';
+    document.getElementById('sEmail').value = '';
+    document.getElementById('sPassword').value = '';
+    msg.textContent = '✓ Staff member added'; msg.style.color = '#16a34a';
+    setTimeout(() => msg.textContent='', 3000);
+    toast('Staff member added ✓'); load();
+  }
+
+  async function removeStaff(id, name) {
+    if (!confirm(`Remove "${name}" from staff? This cannot be undone.`)) return;
+    const { error } = await db.from('staff').delete().eq('id', id);
+    if (error) { toast('Error: ' + error.message, 'error'); return; }
+    toast(`"${name}" removed`); load();
+  }
+
+  load();
+</script>
+</body>
+</html>
