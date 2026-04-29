@@ -27,8 +27,7 @@ Since this project utilizes a cloud-based Backend-as-a-Service (Supabase) and va
 1.  **Clone the Repository:**
     Download or clone the project folder to your local machine:
     ```bash
-    git clone https://github.com/Qamar-15/Web_SemProjeect.git
-    cd Web_SemProjeect
+    https://github.com/Qamar-15/Web_SemProjeect.git
     ```
 
 2.  **Database Configuration:**
